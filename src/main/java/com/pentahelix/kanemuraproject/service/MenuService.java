@@ -28,6 +28,7 @@
     import java.io.File;
     import java.io.IOException;
     import java.nio.file.Files;
+    import java.nio.file.Path;
     import java.nio.file.Paths;
     import java.util.ArrayList;
     import java.util.List;
@@ -49,52 +50,40 @@
         @Autowired
         private ValidationService validationService;
 
-        private final String BASE_FOLDER_PATH = Paths.get("").toAbsolutePath().toString();
-
-        private final String IMAGES_FOLDER = Paths.get(BASE_FOLDER_PATH, "src", "main", "resources", "images").toString();
-
-
-    // Create Menu Service
+        // Create Menu Service
         @Transactional
-        public MenuResponse create(User user, String namaMenu, String description, Integer harga, Integer idkategori, Boolean signature,MultipartFile file) throws IOException {
-            String relativeFilePath = IMAGES_FOLDER + file.getOriginalFilename();
-            String filePath = BASE_FOLDER_PATH + File.separator + relativeFilePath;
+        public MenuResponse create(User user, String namaMenu, String description, Integer harga, Integer idkategori, Boolean signature, MultipartFile file) throws IOException {
 
+            if (file == null || file.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File gambar tidak ditemukan");
+            }
+
+            // Cari Kategori dengan id kategori
+            Kategori kategori = kategoriRepository.findFirstByIdKategori(idkategori)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Kategori Tidak Ditemukan"));
+
+            // Buat objek Menu
             Menu menu = new Menu();
-
             menu.setNamaMenu(namaMenu);
             menu.setDescription(description);
             menu.setHarga(harga);
             menu.setSignature(signature);
             menu.setType(file.getContentType());
-            menu.setFilepath(relativeFilePath);
             menu.setNameImg(file.getOriginalFilename());
-
-    //        Cari Kategori dengan id kategori
-            Kategori kategori = kategoriRepository.findFirstByIdKategori(idkategori)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"Kategori Tidak Ditemukan"));
-
             menu.setKategori(kategori);
 
+            menu = menuRepository.save(menu);
 
-    //        simpan ke database
+            String imagePath = imageService.updateImageToFileSystem(user, file, menu.getId());
+
+            // Update path gambar di menu
+            menu.setFilepath(imagePath);
             menuRepository.save(menu);
 
-            //        CHECK FOLDER
-            File directory = new File(BASE_FOLDER_PATH + File.separator + IMAGES_FOLDER);
-            if (!directory.exists()) {
-                directory.mkdirs();
-            }
-
-            file.transferTo(new File(filePath));
-
-    //        throw id menu yang sudah terbuat untuk disimpan ke menu response
-            menu = menuRepository.findFirstById(menu.getId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"Gagal Membuat Menu"));
-
-
-            return toMenuResponse(menu,kategori);
+            return toMenuResponse(menu, kategori);
         }
+
+
 
     //    MenuResponse
         private MenuResponse toMenuResponse(Menu menu, Kategori kategori){

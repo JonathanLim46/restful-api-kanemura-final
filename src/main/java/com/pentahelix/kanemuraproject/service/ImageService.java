@@ -4,17 +4,18 @@ import com.pentahelix.kanemuraproject.entity.Menu;
 import com.pentahelix.kanemuraproject.entity.User;
 import com.pentahelix.kanemuraproject.repository.MenuRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.List;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Optional;
 
 @Service
@@ -23,59 +24,66 @@ public class ImageService {
     @Autowired
     private MenuRepository menuRepository;
 
-    private final String BASE_FOLDER_PATH = Paths.get("").toAbsolutePath().toString();
+    @Autowired
+    private ResourceLoader resourceLoader;
 
-    private final String IMAGES_FOLDER = Paths.get(BASE_FOLDER_PATH, "src", "main", "resources", "images").toString();
+    private final String IMAGES_FOLDER = "images/";
 
-//    UPLOAD IMAGE
+    // UPLOAD IMAGE
     public String updateImageToFileSystem(User user, MultipartFile file, Integer id) throws IOException {
-        String relativeFilePath = IMAGES_FOLDER + file.getOriginalFilename();
-        String filePath = BASE_FOLDER_PATH + File.separator + relativeFilePath;
+        String filename = StringUtils.cleanPath(file.getOriginalFilename());
 
-//        CARI MENU DENGAN ID MENU
+        // Validate file
+        if (filename.contains("..")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nama file tidak valid: " + filename);
+        }
+
+        // CARI MENU DENGAN ID MENU
         Menu existingMenu = menuRepository.findFirstById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Menu dengan id " + id + " tidak ditemukan"));
 
-        existingMenu.setNameImg(file.getOriginalFilename());
+        existingMenu.setNameImg(filename);
         existingMenu.setType(file.getContentType());
-        existingMenu.setFilepath(relativeFilePath);
 
+        // Simpan data menu sebelum file disalin
         menuRepository.save(existingMenu);
 
-//        CHECK FOLDER
-        File directory = new File(BASE_FOLDER_PATH + File.separator + IMAGES_FOLDER);
-        if (!directory.exists()) {
-            directory.mkdirs();
+        // Path folder gambar
+        Path folderPath = Path.of(IMAGES_FOLDER).toAbsolutePath().normalize();
+
+        if (!Files.exists(folderPath)) {
+            Files.createDirectories(folderPath);
         }
 
-        file.transferTo(new File(filePath));
+        // Path tujuan file
+        Path targetLocation = folderPath.resolve(filename);
 
-        return "File berhasil terupload dengan id menu :  " + id;
+        Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
+
+        return "File berhasil terupload dengan id menu: " + id;
     }
 
-//    GET IMAGE DARI DIRECTORY
-    public byte[] getImageByFileName(String Filename) throws IOException {
-        Optional<Menu> fileDataOptional = menuRepository.findByNameImg(Filename);
-        if (fileDataOptional.isPresent()) {
-            Menu fileData = fileDataOptional.get();
-            String relativeFilePath = fileData.getFilepath();
-            String filePath = BASE_FOLDER_PATH + File.separator + relativeFilePath;
-            return Files.readAllBytes(new File(filePath).toPath());
-        } else {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Gambar tidak ditemukan dengan id menu : "  + Filename);
-    }
-}
+    // GET IMAGE DARI DIRECTORY
+    public byte[] getImageByFileName(String filename) throws IOException {
+        String folderPath = IMAGES_FOLDER;
+        Path imagePath = Path.of(folderPath).toAbsolutePath().normalize().resolve(filename);
+        Resource resource = resourceLoader.getResource("file:" + imagePath.toString());
 
-//    GET IMAGE DENGAN ID MENU
-    public byte[] getImageByMenuId(Integer menu_id) throws IOException {
-        Optional<Menu> fileDataOptional = menuRepository.findFirstById(menu_id);
+        if (resource.exists()) {
+            return Files.readAllBytes(imagePath);
+        } else {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gambar tidak ditemukan dengan nama file: " + filename);
+        }
+    }
+
+    // GET IMAGE DENGAN ID MENU
+    public byte[] getImageByMenuId(Integer menuId) throws IOException {
+        Optional<Menu> fileDataOptional = menuRepository.findFirstById(menuId);
         if (fileDataOptional.isPresent()) {
             Menu fileData = fileDataOptional.get();
-            String relativeFilePath = fileData.getFilepath();
-            String filePath = BASE_FOLDER_PATH + File.separator + relativeFilePath;
-            return Files.readAllBytes(new File(filePath).toPath());
+            return getImageByFileName(fileData.getNameImg());
         } else {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Gambar tidak ditemukan dengan id menu : "  + menu_id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gambar tidak ditemukan dengan id menu: " + menuId);
         }
     }
 }
