@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.Optional;
 
@@ -27,7 +28,7 @@ public class ImageService {
     @Autowired
     private ResourceLoader resourceLoader;
 
-    private final String IMAGES_FOLDER = "images/";
+    public final String UPLOAD_DIR = Paths.get("src/main/resources/images/").toAbsolutePath().toString();
 
     // UPLOAD IMAGE
     public String updateImageToFileSystem(User user, MultipartFile file, Integer id) throws IOException {
@@ -49,7 +50,7 @@ public class ImageService {
         menuRepository.save(existingMenu);
 
         // Path folder gambar
-        Path folderPath = Path.of(IMAGES_FOLDER).toAbsolutePath().normalize();
+        Path folderPath = Paths.get(UPLOAD_DIR).toAbsolutePath().normalize();
 
         if (!Files.exists(folderPath)) {
             Files.createDirectories(folderPath);
@@ -60,13 +61,13 @@ public class ImageService {
 
         Files.copy(file.getInputStream(), targetLocation, StandardCopyOption.REPLACE_EXISTING);
 
-        return "File berhasil terupload dengan id menu: " + id;
+        // Return the relative path of the image
+        return Paths.get("images", filename).toString();
     }
 
     // GET IMAGE DARI DIRECTORY
     public byte[] getImageByFileName(String filename) throws IOException {
-        String folderPath = IMAGES_FOLDER;
-        Path imagePath = Path.of(folderPath).toAbsolutePath().normalize().resolve(filename);
+        Path imagePath = Paths.get(UPLOAD_DIR).resolve(filename).toAbsolutePath().normalize();
         Resource resource = resourceLoader.getResource("file:" + imagePath.toString());
 
         if (resource.exists()) {
