@@ -43,6 +43,12 @@ public class ImageService {
         Menu existingMenu = menuRepository.findFirstById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Menu dengan id " + id + " tidak ditemukan"));
 
+        // Delete the existing image file if it exists
+        if (existingMenu.getNameImg() != null && !existingMenu.getNameImg().isEmpty()) {
+            Path existingImagePath = Paths.get(UPLOAD_DIR).resolve(existingMenu.getNameImg()).toAbsolutePath().normalize();
+            Files.deleteIfExists(existingImagePath);
+        }
+
         existingMenu.setNameImg(filename);
         existingMenu.setType(file.getContentType());
 
